@@ -34,21 +34,47 @@ export async function ativarNotificacoes() {
     return { ok: true, subscription };
   } catch (erro) {
     console.warn(
-      "⚠️ Não foi possível criar a inscrição de push. A notificação local continua funcionando:",
-      erro.message
+      "⚠️ Inscrição de Push não criada. As notificações locais continuam disponíveis:",
+      erro
     );
-    return { ok: false, motivo: "subscribe-falhou", erro };
+    return { ok: true, subscription: null, pushIndisponivel: true };
   }
 }
 
 export async function notificarLocal(titulo, opcoes = {}) {
-  if (!suportaNotificacoes() || Notification.permission !== "granted") return;
+  if (!suportaNotificacoes()) {
+    console.warn("Notificações não são suportadas neste navegador.");
+    return false;
+  }
 
-  const registro = await navigator.serviceWorker.ready;
+  if (Notification.permission !== "granted") {
+    console.warn("Permissão de notificação não concedida.");
+    return false;
+  }
 
-  await registro.showNotification(titulo, {
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    ...opcoes,
-  });
+  try {
+    const registro = await navigator.serviceWorker.ready;
+
+    await registro.showNotification(titulo, {
+      body: opcoes.body || "",
+      ...opcoes,
+    });
+
+    console.log("🔔 Notificação exibida pelo Service Worker.");
+    return true;
+  } catch (erro) {
+    console.warn(
+      "Service Worker não conseguiu exibir a notificação. Tentando API do navegador:",
+      erro
+    );
+
+    try {
+      new Notification(titulo, opcoes);
+      console.log("🔔 Notificação exibida pela API Notification.");
+      return true;
+    } catch (erroFallback) {
+      console.error("Não foi possível exibir a notificação:", erroFallback);
+      return false;
+    }
+  }
 }
