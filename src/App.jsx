@@ -1,11 +1,12 @@
-// App.jsx — agora com ESTADO de verdade!
-// O array de tarefas deixa de ser fixo e passa a viver no useState.
-// Toda vez que o estado muda, o React RE-RENDERIZA a tela sozinho.
-
 import { useState, useEffect } from "react";
 import Header from "./components/Header";
 import TaskCard from "./components/TaskCard";
 import TaskForm from "./components/TaskForm";
+import StatusRede from "./components/StatusRede";
+import InstallPrompt from "./components/InstallPrompt";
+import NotificationPrompt from "./components/NotificationPrompt";
+import { notificarLocal } from "./notifications";
+import { agendarSincronizacao } from "./backgroundSync";
 
 const TAREFAS_INICIAIS = [
   { id: 1, titulo: "Estudar componentes do React", categoria: "Estudos", prioridade: "alta", concluida: false },
@@ -14,9 +15,6 @@ const TAREFAS_INICIAIS = [
 ];
 
 function App() {
-  // useState: [valorAtual, funçãoQueAtualiza]
-  // A função lazy (() => ...) só roda a leitura do localStorage
-  // UMA vez, na montagem — não a cada renderização.
   const [tarefas, setTarefas] = useState(() => {
     const salvas = localStorage.getItem("devlife-tarefas");
     return salvas ? JSON.parse(salvas) : TAREFAS_INICIAIS;
@@ -25,64 +23,94 @@ function App() {
   const [anuncio, setAnuncio] = useState("");
   const [filtro, setFiltro] = useState("todas");
 
-  // EFEITO COLATERAL: sincronizar o estado com o localStorage.
-  // Roda toda vez que `tarefas` muda (é a dependência do array).
   useEffect(() => {
-    console.log("💾 Salvando tarefas no localStorage...");
     localStorage.setItem("devlife-tarefas", JSON.stringify(tarefas));
   }, [tarefas]);
 
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    function aoReceberMensagem(evento) {
+      if (evento.data?.tipo === "SINCRONIZADO") {
+        setAnuncio("🔄 Sincronização em segundo plano concluída.");
+      }
+    }
+
+    navigator.serviceWorker.addEventListener("message", aoReceberMensagem);
+    return () => navigator.serviceWorker.removeEventListener("message", aoReceberMensagem);
+  }, []);
+
+  function avisarMudancaOffline() {
+    if (!navigator.onLine) {
+      agendarSincronizacao("sincronizar-tarefas");
+      setAnuncio((atual) => `${atual} A sincronização ocorrerá quando a conexão voltar.`);
+    }
+  }
+
   function adicionarTarefa(novaTarefa) {
-    // Nunca alteramos o array diretamente (tarefas.push(...) ❌)
-    // Sempre criamos um NOVO array — imutabilidade é regra de ouro no React.
     setTarefas((atual) => [
       ...atual,
       { ...novaTarefa, id: Date.now(), concluida: false },
     ]);
 
-    setAnuncio('Tarefa "{novaTarefa.titulo}") adicionada.')
+    setAnuncio(`Tarefa "${novaTarefa.titulo}" adicionada.`);
+    avisarMudancaOffline();
   }
 
   function alternarConcluida(id) {
     const tarefa = tarefas.find((t) => t.id === id);
+    if (!tarefa) return;
+
     const vaiConcluir = !tarefa.concluida;
     const status = vaiConcluir ? "concluída" : "pendente";
 
     setTarefas((atual) =>
       atual.map((t) => (t.id === id ? { ...t, concluida: !t.concluida } : t))
     );
-    setAnuncio('Tarefa "${tarefa.titulo}" marcada como ${status}.')
+
+    setAnuncio(`Tarefa "${tarefa.titulo}" marcada como ${status}.`);
+
+    if (vaiConcluir && tarefa.prioridade === "alta") {
+      notificarLocal("Boa! Tarefa de alta prioridade concluída 🎉", {
+        body: tarefa.titulo,
+      });
+    }
   }
 
   function removerTarefa(id) {
     const tarefa = tarefas.find((t) => t.id === id);
+    if (!tarefa) return;
+
     setTarefas((atual) => atual.filter((t) => t.id !== id));
-    setAnuncio('Tarefa "${tarefa.titulo}" removida.');
+    setAnuncio(`Tarefa "${tarefa.titulo}" removida.`);
+    avisarMudancaOffline();
   }
 
   const tarefasFiltradas = tarefas.filter((t) => {
     if (filtro === "pendentes") return !t.concluida;
     if (filtro === "concluidas") return t.concluida;
-    return true; // "todas"
+    return true;
   });
 
   return (
     <div className="min-h-screen bg-slate-100">
-      
       <a
-      href="#conteudo"
-      className={'sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-slate-900 focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg'}
+        href="#conteudo"
+        className="sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-slate-900 focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg"
       >
         Pular para o conteúdo
       </a>
 
       <Header />
+      <StatusRede />
+      <InstallPrompt />
+      <NotificationPrompt />
 
       <div aria-live="polite" role="status" className="sr-only">
         {anuncio}
       </div>
 
-      <main className="max-w-4xl mx-auto px-6 py-10">
+      <main id="conteudo" className="max-w-4xl mx-auto px-6 py-10">
         <TaskForm onAdicionar={adicionarTarefa} />
 
         <div className="flex items-center justify-between mb-6">
