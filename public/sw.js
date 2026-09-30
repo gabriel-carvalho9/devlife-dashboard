@@ -1,10 +1,8 @@
-const CACHE_NAME = "devlife-cache-v2";
+const CACHE_NAME = "devlife-cache-v3";
 
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -73,8 +71,6 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(dados.titulo, {
       body: dados.corpo,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
     })
   );
 });
